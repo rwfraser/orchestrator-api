@@ -1,0 +1,583 @@
+openapi: 3.1.0
+info:
+  title: MyselfServe Realtime Orchestrator API
+  version: 1.0.0
+  summary: API for realtime sales-avatar orchestration, scene planning, and event streaming.
+servers:
+  - url: /api/v1/orchestrator
+security:
+  - bearerAuth: []
+tags:
+  - name: Sessions
+  - name: Turns
+paths:
+  /sessions:
+    post:
+      tags: [Sessions]
+      operationId: createSession
+      summary: Create a realtime orchestration session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created.
+          headers:
+            x-correlation-id:
+              description: Correlation id for distributed tracing.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateSessionResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      summary: Get current session status and provider health.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSessionResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /sessions/{session_id}/turns:
+    post:
+      tags: [Turns]
+      operationId: submitTurn
+      summary: Submit a user turn for model + media orchestration.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Optional key for safe retries of the same turn.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitTurnRequest'
+      responses:
+        '202':
+          description: Turn accepted; results stream over realtime channel.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitTurnResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /sessions/{session_id}/events:
+    get:
+      tags: [Sessions]
+      operationId: streamEventsWebSocketFallback
+      summary: WebSocket fallback endpoint for realtime event streaming.
+      description: |
+        This operation is documented as HTTP for discoverability. Runtime behavior upgrades the
+        connection to WebSocket and streams `RealtimeEventEnvelope` messages.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket upgrade).
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+  /sessions/{session_id}/end:
+    post:
+      tags: [Sessions]
+      operationId: endSession
+      summary: End session and revoke realtime access.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndSessionResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    ErrorResponse:
+      description: Error response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    SchemaVersion:
+      type: string
+      const: '1.0'
+    Mode:
+      type: string
+      enum: [AVATAR_LEAD, SPLIT_FOCUS, VISUAL_LEAD]
+    EventType:
+      type: string
+      enum:
+        - assistant_text_delta
+        - assistant_text_final
+        - voice_chunk_ready
+        - timing_cue
+        - scene_plan
+        - scene_transition
+        - avatar_layout_update
+        - turn_complete
+        - error
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - user_id
+        - locale
+        - persona
+        - channel
+        - features
+        - client_capabilities
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        tenant_id:
+          type: string
+        user_id:
+          type: string
+        locale:
+          type: string
+          example: en-US
+        persona:
+          type: string
+        channel:
+          type: string
+          example: web
+        features:
+          $ref: '#/components/schemas/SessionFeatures'
+        client_capabilities:
+          $ref: '#/components/schemas/ClientCapabilities'
+    SessionFeatures:
+      type: object
+      additionalProperties: false
+      required: [rag_enabled, barge_in_enabled, visual_generation_enabled]
+      properties:
+        rag_enabled:
+          type: boolean
+        barge_in_enabled:
+          type: boolean
+        visual_generation_enabled:
+          type: boolean
+    ClientCapabilities:
+      type: object
+      additionalProperties: false
+      required: [webrtc, websocket_fallback]
+      properties:
+        webrtc:
+          type: boolean
+        websocket_fallback:
+          type: boolean
+    CreateSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, session_id, expires_at, realtime]
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        session_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        realtime:
+          $ref: '#/components/schemas/RealtimeConnection'
+    RealtimeConnection:
+      type: object
+      additionalProperties: false
+      required: [transport, provider, room_name, join_token]
+      properties:
+        transport:
+          type: string
+          enum: [webrtc]
+        provider:
+          type: string
+          enum: [livekit]
+        room_name:
+          type: string
+        join_token:
+          type: string
+    SubmitTurnRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, turn_id, input, context]
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        turn_id:
+          type: string
+        input:
+          $ref: '#/components/schemas/TurnInput'
+        context:
+          $ref: '#/components/schemas/TurnContext'
+    TurnInput:
+      type: object
+      additionalProperties: false
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+    TurnContext:
+      type: object
+      additionalProperties: false
+      required: [sales_stage, offer_id, current_scene_mode]
+      properties:
+        sales_stage:
+          type: string
+        offer_id:
+          type: string
+        current_scene_mode:
+          $ref: '#/components/schemas/Mode'
+    SubmitTurnResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, turn_id, status, stream_channel]
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        turn_id:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
+        stream_channel:
+          type: string
+          enum: [realtime]
+    GetSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - session_id
+        - status
+        - active_turn_id
+        - scene_mode
+        - provider_health
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        session_id:
+          type: string
+        status:
+          type: string
+          enum: [active, ended]
+        active_turn_id:
+          type: [string, 'null']
+        scene_mode:
+          $ref: '#/components/schemas/Mode'
+        provider_health:
+          $ref: '#/components/schemas/ProviderHealth'
+    ProviderHealth:
+      type: object
+      additionalProperties: false
+      required: [rtc, avatar, tts]
+      properties:
+        rtc:
+          $ref: '#/components/schemas/HealthState'
+        avatar:
+          $ref: '#/components/schemas/HealthState'
+        tts:
+          $ref: '#/components/schemas/HealthState'
+    HealthState:
+      type: string
+      enum: [ok, degraded, down]
+    EndSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, session_id, status]
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        session_id:
+          type: string
+        status:
+          type: string
+          enum: [ended]
+    RealtimeEventEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - session_id
+        - turn_id
+        - event_id
+        - sequence
+        - event_type
+        - sent_at
+        - payload
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        session_id:
+          type: string
+        turn_id:
+          type: string
+        event_id:
+          type: string
+        sequence:
+          type: integer
+          minimum: 1
+        event_type:
+          $ref: '#/components/schemas/EventType'
+        sent_at:
+          type: string
+          format: date-time
+        payload:
+          oneOf:
+            - $ref: '#/components/schemas/AssistantTextDeltaPayload'
+            - $ref: '#/components/schemas/AssistantTextFinalPayload'
+            - $ref: '#/components/schemas/VoiceChunkReadyPayload'
+            - $ref: '#/components/schemas/TimingCuePayload'
+            - $ref: '#/components/schemas/ScenePlanPayload'
+            - $ref: '#/components/schemas/SceneTransitionPayload'
+            - $ref: '#/components/schemas/AvatarLayoutUpdatePayload'
+            - $ref: '#/components/schemas/TurnCompletePayload'
+            - $ref: '#/components/schemas/EventErrorPayload'
+    AssistantTextDeltaPayload:
+      type: object
+      additionalProperties: false
+      required: [delta]
+      properties:
+        delta:
+          type: string
+    AssistantTextFinalPayload:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+    VoiceChunkReadyPayload:
+      type: object
+      additionalProperties: false
+      required: [chunk_id, sequence, duration_ms, mime_type]
+      properties:
+        chunk_id:
+          type: string
+        sequence:
+          type: integer
+          minimum: 1
+        duration_ms:
+          type: integer
+          minimum: 1
+        mime_type:
+          type: string
+          example: audio/pcm
+    TimingCuePayload:
+      type: object
+      additionalProperties: false
+      required: [at_ms, cue_type, target, metadata]
+      properties:
+        at_ms:
+          type: integer
+          minimum: 0
+        cue_type:
+          type: string
+          enum: [show_caption, bring_video_foreground, highlight_cta, custom]
+        target:
+          type: string
+          enum: [compositor, captions, overlays]
+        metadata:
+          type: object
+          additionalProperties: true
+    ScenePlanPayload:
+      type: object
+      additionalProperties: false
+      required: [mode, scene_type, asset_query, avatar_layout, transition, guards]
+      properties:
+        mode:
+          $ref: '#/components/schemas/Mode'
+        scene_type:
+          type: string
+        asset_query:
+          $ref: '#/components/schemas/AssetQuery'
+        avatar_layout:
+          $ref: '#/components/schemas/AvatarLayout'
+        transition:
+          $ref: '#/components/schemas/Transition'
+        guards:
+          $ref: '#/components/schemas/SceneGuards'
+    SceneTransitionPayload:
+      type: object
+      additionalProperties: false
+      required: [from_mode, to_mode, type, duration_ms]
+      properties:
+        from_mode:
+          $ref: '#/components/schemas/Mode'
+        to_mode:
+          $ref: '#/components/schemas/Mode'
+        type:
+          type: string
+        duration_ms:
+          type: integer
+          minimum: 0
+    AvatarLayoutUpdatePayload:
+      type: object
+      additionalProperties: false
+      required: [position, scale, z_index]
+      properties:
+        position:
+          type: string
+          enum: [center, left, right, bottom_left, bottom_right]
+        scale:
+          type: number
+          minimum: 0.1
+          maximum: 2
+        z_index:
+          type: integer
+    TurnCompletePayload:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    EventErrorPayload:
+      type: object
+      additionalProperties: false
+      required: [code, severity, message, fallback_applied]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        severity:
+          type: string
+          enum: [recoverable, fatal]
+        message:
+          type: string
+        fallback_applied:
+          type: boolean
+    AssetQuery:
+      type: object
+      additionalProperties: false
+      required: [product, persona, intent]
+      properties:
+        product:
+          type: string
+        persona:
+          type: string
+        intent:
+          type: string
+    AvatarLayout:
+      type: object
+      additionalProperties: false
+      required: [position, scale, z_index]
+      properties:
+        position:
+          type: string
+          enum: [center, left, right, bottom_left, bottom_right]
+        scale:
+          type: number
+        z_index:
+          type: integer
+    Transition:
+      type: object
+      additionalProperties: false
+      required: [type, duration_ms]
+      properties:
+        type:
+          type: string
+        duration_ms:
+          type: integer
+          minimum: 0
+    SceneGuards:
+      type: object
+      additionalProperties: false
+      required: [min_mode_dwell_ms, max_switches_per_10s]
+      properties:
+        min_mode_dwell_ms:
+          type: integer
+          minimum: 0
+        max_switches_per_10s:
+          type: integer
+          minimum: 1
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version:
+          $ref: '#/components/schemas/SchemaVersion'
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+        retryable:
+          type: boolean
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_REQUEST
+        - UNAUTHORIZED
+        - SESSION_NOT_FOUND
+        - PROVIDER_UNAVAILABLE
+        - SCHEMA_VALIDATION_FAILED
+        - RATE_LIMITED
+        - INTERNAL_ERROR
