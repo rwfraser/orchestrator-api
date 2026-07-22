@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SessionManagementService } from './session-management-service';
 import type { CreateSessionRequest, RealtimeEvent, SubmitTurnRequest } from './orchestrator-api.types';
 import { ApiValidationError } from './validation';
+import type { RtcAdapter } from './rtc-adapter';
 
 const createSessionInput: CreateSessionRequest = {
   schema_version: '1.0',
@@ -115,6 +116,34 @@ test('createSession initializes active session with AVATAR_LEAD mode', () => {
   assert.equal(state.status, 'active');
   assert.equal(state.active_turn_id, null);
   assert.equal(state.scene_mode, 'AVATAR_LEAD');
+});
+
+test('createSession uses injected rtc adapter and endSession releases connection once', () => {
+  const calls: { provision: number; release: number } = { provision: 0, release: 0 };
+  const adapter: RtcAdapter = {
+    provisionConnection: ({ session_id }) => {
+      calls.provision += 1;
+      return {
+        transport: 'webrtc',
+        provider: 'agora',
+        room_name: `agora_${session_id}`,
+        join_token: 'agora-token',
+      };
+    },
+    releaseConnection: () => {
+      calls.release += 1;
+    },
+  };
+
+  const service = new SessionManagementService(30 * 60_000, 2_500, 2, adapter);
+  const created = service.createSession(createSessionInput);
+  assert.equal(created.realtime.provider, 'agora');
+  assert.match(created.realtime.room_name, /^agora_sess_/);
+  assert.equal(calls.provision, 1);
+
+  service.endSession(created.session_id);
+  service.endSession(created.session_id);
+  assert.equal(calls.release, 1);
 });
 
 test('submitTurn accepts first turn and blocks another in-progress turn', () => {

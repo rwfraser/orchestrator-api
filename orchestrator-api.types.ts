@@ -3,7 +3,7 @@ export type SchemaVersion = '1.0';
 export type SceneMode = 'AVATAR_LEAD' | 'SPLIT_FOCUS' | 'VISUAL_LEAD';
 export type HealthState = 'ok' | 'degraded' | 'down';
 export type RealtimeTransport = 'webrtc';
-export type RealtimeProvider = 'livekit';
+export type RealtimeProvider = 'livekit' | 'daily' | 'agora' | 'tencent_rtc';
 
 export type EventType =
   | 'assistant_text_delta'
