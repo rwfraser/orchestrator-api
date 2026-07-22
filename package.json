@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "tsx --test ./*.test.ts",
-    "test:integration": "tsx --test ./*.integration.test.ts"
+    "test:integration": "tsx --test ./*.integration.test.ts",
+    "harness": "./scripts/run-harness.sh",
+    "harness:burst": "./scripts/run-harness-burst.sh"
   },
   "dependencies": {
     "express": "^4.21.1",

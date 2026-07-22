@@ -4,6 +4,7 @@ This repository contains the realtime orchestrator API, validation schemas, sess
 ## API Documentation
 - Video background integration endpoints: `VIDEO_BACKGROUND_API.md`
 - OpenAPI specification: `openapi.orchestrator.v1.yaml`
+- Harness interpretation and CI/CD guide: `HARNESS_RESULTS_AND_CICD.md`
 
 ## Frontend Integration
 - React component: `OrchestratedSalesAvatar.tsx`
