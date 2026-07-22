@@ -5,7 +5,7 @@ export const SchemaVersionSchema = z.literal('1.0');
 export const SceneModeSchema = z.enum(['AVATAR_LEAD', 'SPLIT_FOCUS', 'VISUAL_LEAD']);
 export const HealthStateSchema = z.enum(['ok', 'degraded', 'down']);
 export const RealtimeTransportSchema = z.literal('webrtc');
-export const RealtimeProviderSchema = z.literal('livekit');
+export const RealtimeProviderSchema = z.enum(['livekit', 'daily', 'agora', 'tencent_rtc']);
 
 export const EventTypeSchema = z.enum([
   'assistant_text_delta',

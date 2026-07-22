@@ -249,7 +249,7 @@ components:
           enum: [webrtc]
         provider:
           type: string
-          enum: [livekit]
+          enum: [livekit, daily, agora, tencent_rtc]
         room_name:
           type: string
         join_token:

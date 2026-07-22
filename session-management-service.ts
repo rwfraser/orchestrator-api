@@ -17,6 +17,7 @@ import {
   type VideoBackgroundCommand,
   type VideoBackgroundControllerState,
 } from './video-background-controller';
+import { LiveKitRtcAdapter, type RtcAdapter } from './rtc-adapter';
 
 type TurnState = 'accepted' | 'streaming' | 'completed' | 'failed';
 type SessionState = 'active' | 'ended';
@@ -33,6 +34,7 @@ interface SessionRuntimeState {
   status: SessionState;
   created_at: string;
   expires_at: string;
+  realtime: CreateSessionResponse['realtime'];
   scene_mode: SceneMode;
   last_scene_mode_change_ms: number;
   mode_change_window_ms: number[];
@@ -50,24 +52,24 @@ export class SessionManagementService {
     private readonly sessionTtlMs = 30 * 60_000,
     private readonly minModeDwellMs = 2_500,
     private readonly maxModeSwitchesPer10s = 2,
+    private readonly rtcAdapter: RtcAdapter = new LiveKitRtcAdapter(),
   ) {}
 
   createSession(input: CreateSessionRequest): CreateSessionResponse {
     const sessionId = `sess_${randomUUID()}`;
     const now = Date.now();
     const expiresAt = new Date(now + this.sessionTtlMs).toISOString();
-    const roomName = `sales_${sessionId}`;
+    const realtime = this.rtcAdapter.provisionConnection({
+      session_id: sessionId,
+      expires_at: expiresAt,
+      request: input,
+    });
 
     const response: CreateSessionResponse = {
       schema_version: input.schema_version,
       session_id: sessionId,
       expires_at: expiresAt,
-      realtime: {
-        transport: 'webrtc',
-        provider: 'livekit',
-        room_name: roomName,
-        join_token: 'replace-with-ephemeral-rtc-token',
-      },
+      realtime,
     };
 
     this.sessions.set(sessionId, {
@@ -75,6 +77,7 @@ export class SessionManagementService {
       status: 'active',
       created_at: new Date(now).toISOString(),
       expires_at: expiresAt,
+      realtime,
       scene_mode: 'AVATAR_LEAD',
       last_scene_mode_change_ms: now,
       mode_change_window_ms: [],
@@ -108,6 +111,12 @@ export class SessionManagementService {
 
   endSession(sessionId: string): EndSessionResponse {
     const session = this.requireSession(sessionId);
+    if (session.status !== 'ended') {
+      this.rtcAdapter.releaseConnection?.({
+        session_id: session.session_id,
+        realtime: session.realtime,
+      });
+    }
     session.status = 'ended';
     session.active_turn_id = null;
 
