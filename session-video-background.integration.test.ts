@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createOrchestratorApp } from './orchestrator-app';
 import { SessionManagementService } from './session-management-service';
+import { VideoBackgroundOrchestrationService } from './video-background-orchestration-service';
 
 const createSessionRequest = {
   schema_version: '1.0',
@@ -69,7 +70,7 @@ const makeScenePlanEvent = (sessionId: string, turnId: string, sequence: number)
 });
 
 test('POST scene_plan triggers APPLY_SCENE_PLAN video background command', async () => {
-  const service = new SessionManagementService(30 * 60_000, 0, 5);
+  const service = new VideoBackgroundOrchestrationService(new SessionManagementService(30 * 60_000, 0, 5));
   const app = createOrchestratorApp(service);
 
   const createRes = await request(app).post('/api/v1/orchestrator/sessions').send(createSessionRequest).expect(201);
@@ -95,7 +96,7 @@ test('POST scene_plan triggers APPLY_SCENE_PLAN video background command', async
 });
 
 test('scene_transition event appends APPLY_SCENE_TRANSITION command with expected focus', async () => {
-  const service = new SessionManagementService(30 * 60_000, 0, 5);
+  const service = new VideoBackgroundOrchestrationService(new SessionManagementService(30 * 60_000, 0, 5));
   const app = createOrchestratorApp(service);
 
   const createRes = await request(app).post('/api/v1/orchestrator/sessions').send(createSessionRequest).expect(201);
@@ -142,4 +143,11 @@ test('scene_transition event appends APPLY_SCENE_TRANSITION command with expecte
 
   assert.equal(stateRes.body.state.mode, 'SPLIT_FOCUS');
   assert.equal(stateRes.body.state.focus, 'SPLIT_FOCUS');
+
+  const summaryRes = await request(app)
+    .get(`/api/v1/orchestrator/internal/sessions/${sessionId}/video-background/summary`)
+    .expect(200);
+  assert.equal(summaryRes.body.summary.events_processed, 2);
+  assert.equal(summaryRes.body.summary.commands_emitted, 2);
+  assert.equal(typeof summaryRes.body.summary.last_command_id, 'string');
 });

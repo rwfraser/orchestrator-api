@@ -6,9 +6,9 @@ import {
   parseRealtimeEvent,
   parseSubmitTurnRequest,
 } from './validation';
-import { SessionManagementService } from './session-management-service';
+import { VideoBackgroundOrchestrationService } from './video-background-orchestration-service';
 
-export const createOrchestratorApp = (service: SessionManagementService): express.Express => {
+export const createOrchestratorApp = (service: VideoBackgroundOrchestrationService): express.Express => {
   const app = express();
   app.use(express.json());
 
@@ -17,6 +17,19 @@ export const createOrchestratorApp = (service: SessionManagementService): expres
       const input = parseCreateSessionRequest(req.body);
       const response = service.createSession(input);
       res.status(201).json(response);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/orchestrator/internal/sessions/:session_id/video-background/summary', (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = req.params.session_id;
+      if (!sessionId) {
+        throw new ApiValidationError(makeApiError('SESSION_NOT_FOUND', 'session_id path parameter is required', { status: 404 }));
+      }
+      const summary = service.getOrchestrationSummary(sessionId);
+      res.status(200).json({ schema_version: '1.0', summary });
     } catch (error) {
       next(error);
     }
@@ -52,12 +65,13 @@ export const createOrchestratorApp = (service: SessionManagementService): expres
   app.post('/api/v1/orchestrator/internal/events', (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = parseRealtimeEvent(req.body);
-      const normalized = service.ingestEvent(event.session_id, event);
+      const result = service.processRealtimeEvent(event);
       res.status(200).json({
         schema_version: '1.0',
         accepted: true,
-        event_id: normalized.event_id,
-        sequence: normalized.sequence,
+        event_id: result.event.event_id,
+        sequence: result.event.sequence,
+        latest_command_id: result.latest_command?.command_id ?? null,
       });
     } catch (error) {
       next(error);

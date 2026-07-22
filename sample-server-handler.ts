@@ -1,7 +1,7 @@
-import { sessionManagementService } from './session-management-service';
 import { createOrchestratorApp } from './orchestrator-app';
+import { videoBackgroundOrchestrationService } from './video-background-orchestration-service';
 
-const app = createOrchestratorApp(sessionManagementService);
+const app = createOrchestratorApp(videoBackgroundOrchestrationService);
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
